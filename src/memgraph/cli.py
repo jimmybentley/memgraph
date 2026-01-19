@@ -10,6 +10,11 @@ from rich.panel import Panel  # type: ignore
 from memgraph.trace.parser import parse_trace
 from memgraph.trace.generator import GENERATORS, get_available_patterns
 from memgraph.trace.formats.native import NativeParser
+from memgraph.graph.builder import GraphBuilder
+from memgraph.graph.windowing import WindowStrategy, FixedWindow, SlidingWindow, AdaptiveWindow
+from memgraph.graph.coarsening import Granularity
+from memgraph.graph.stats import GraphStats
+from memgraph.graph.serialization import save_graph, load_graph
 
 app = typer.Typer(
     name="memgraph",
@@ -216,6 +221,171 @@ def patterns() -> None:
     )
 
     console.print(table)
+
+
+@app.command()
+def build(
+    trace_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="Path to trace file"
+    ),
+    output: Path = typer.Option(
+        ...,
+        "--output",
+        "-o",
+        help="Output graph file path"
+    ),
+    window: str = typer.Option(
+        "fixed",
+        "--window",
+        "-w",
+        help="Window strategy: fixed, sliding, adaptive"
+    ),
+    window_size: int = typer.Option(
+        100,
+        "--window-size",
+        help="Window size (number of accesses)"
+    ),
+    step: int = typer.Option(
+        1,
+        "--step",
+        help="Step size for sliding window"
+    ),
+    granularity: str = typer.Option(
+        "cacheline",
+        "--granularity",
+        "-g",
+        help="Address granularity: byte, cacheline, page"
+    ),
+    min_weight: int = typer.Option(
+        1,
+        "--min-weight",
+        help="Minimum edge weight to include"
+    ),
+    show_stats: bool = typer.Option(
+        False,
+        "--stats",
+        help="Display graph statistics after building"
+    ),
+    trace_format: Optional[str] = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help="Trace format (auto-detect if not specified)"
+    ),
+) -> None:
+    """Build a temporal adjacency graph from a trace file."""
+    try:
+        # Parse trace
+        console.print(f"[cyan]Parsing trace:[/cyan] {trace_file}")
+        trace = parse_trace(trace_file, format=trace_format)
+        console.print(f"  Loaded {len(trace):,} memory accesses")
+
+        # Select window strategy
+        window = window.lower()
+        strategy: WindowStrategy
+        if window == "fixed":
+            strategy = FixedWindow(size=window_size)
+        elif window == "sliding":
+            strategy = SlidingWindow(size=window_size, step=step)
+        elif window == "adaptive":
+            strategy = AdaptiveWindow(base_size=window_size)
+        else:
+            console.print(f"[red]Error:[/red] Unknown window strategy: {window}")
+            console.print("Available: fixed, sliding, adaptive")
+            raise typer.Exit(1)
+
+        # Select granularity
+        granularity_map = {
+            "byte": Granularity.BYTE,
+            "cacheline": Granularity.CACHELINE,
+            "page": Granularity.PAGE,
+        }
+        granularity = granularity.lower()
+        if granularity not in granularity_map:
+            console.print(f"[red]Error:[/red] Unknown granularity: {granularity}")
+            console.print("Available: byte, cacheline, page")
+            raise typer.Exit(1)
+
+        gran = granularity_map[granularity]
+
+        # Build graph
+        console.print(f"[cyan]Building graph:[/cyan] {window} window, {granularity} granularity")
+        builder = GraphBuilder(
+            window_strategy=strategy,
+            granularity=gran,
+            min_edge_weight=min_weight
+        )
+        graph = builder.build(trace)
+
+        # Save graph
+        save_graph(graph, output)
+        console.print(f"[green]✓[/green] Graph saved to: {output}")
+
+        # Show statistics if requested
+        if show_stats:
+            stats = GraphStats.from_graph(graph)
+            summary_lines = stats.format_summary().split("\n")
+
+            panel = Panel(
+                "\n".join(summary_lines),
+                title="[bold]Graph Statistics[/bold]",
+                border_style="green",
+                padding=(1, 2),
+            )
+            console.print(panel)
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def stats(
+    graph_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="Path to graph file"
+    ),
+) -> None:
+    """Display statistics for a saved graph."""
+    try:
+        # Load graph
+        console.print(f"[cyan]Loading graph:[/cyan] {graph_file}")
+        graph = load_graph(graph_file)
+
+        # Compute statistics
+        graph_stats = GraphStats.from_graph(graph)
+
+        # Display statistics
+        summary_lines = graph_stats.format_summary().split("\n")
+
+        panel = Panel(
+            "\n".join(summary_lines),
+            title="[bold]Graph Statistics[/bold]",
+            border_style="green",
+            padding=(1, 2),
+        )
+
+        console.print(panel)
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
