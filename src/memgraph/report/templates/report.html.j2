@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MemGraph Analysis Report</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --card-bg: #16213e;
+            --text: #eee;
+            --accent: #4ecca3;
+            --muted: #888;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1, h2, h3 { color: var(--accent); }
+        .card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        .stat-item {
+            background: rgba(78, 204, 163, 0.1);
+            padding: 1rem;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value { font-size: 2rem; font-weight: bold; color: var(--accent); }
+        .stat-label { color: var(--muted); font-size: 0.9rem; }
+        .chart-img { max-width: 100%; border-radius: 4px; }
+        .recommendation {
+            padding: 0.5rem 1rem;
+            margin: 0.5rem 0;
+            border-left: 3px solid var(--accent);
+            background: rgba(78, 204, 163, 0.05);
+        }
+        .confidence-high { color: #4ecca3; }
+        .confidence-med { color: #ffc107; }
+        .confidence-low { color: #e74c3c; }
+        .pattern-badge {
+            display: inline-block;
+            background: var(--accent);
+            color: var(--bg);
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔬 MemGraph Analysis Report</h1>
+    <p style="color: var(--muted);">Generated: {{ generated_at }} | Source: {{ result.trace_source }}</p>
+
+    <div class="card">
+        <h2>📊 Trace Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-value">{{ "{:,}".format(result.total_accesses) }}</div>
+                <div class="stat-label">Total Accesses</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ "{:,}".format(result.unique_addresses) }}</div>
+                <div class="stat-label">Unique Addresses</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ "{:,}".format(result.read_count) }}</div>
+                <div class="stat-label">Reads</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ "{:,}".format(result.write_count) }}</div>
+                <div class="stat-label">Writes</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🕸️ Graph Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-value">{{ "{:,}".format(result.node_count) }}</div>
+                <div class="stat-label">Nodes</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ "{:,}".format(result.edge_count) }}</div>
+                <div class="stat-label">Edges</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ "%.4f"|format(result.density) }}</div>
+                <div class="stat-label">Density</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ "%.2f"|format(result.avg_clustering) }}</div>
+                <div class="stat-label">Avg Clustering</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🧩 Graphlet Distribution</h2>
+        <img class="chart-img" src="data:image/png;base64,{{ graphlet_chart_b64 }}" alt="Graphlet Distribution">
+    </div>
+
+    <div class="card">
+        <h2>🎯 Pattern Classification</h2>
+        <p>
+            Detected Pattern: <span class="pattern-badge">{{ result.detected_pattern }}</span>
+            <span class="{% if result.confidence > 0.7 %}confidence-high{% elif result.confidence > 0.5 %}confidence-med{% else %}confidence-low{% endif %}">
+                ({{ "%.1f%%"|format(result.confidence * 100) }} confidence)
+            </span>
+        </p>
+        <img class="chart-img" src="data:image/png;base64,{{ similarity_chart_b64 }}" alt="Pattern Similarities">
+    </div>
+
+    <div class="card">
+        <h2>💡 Recommendations</h2>
+        {% for rec in result.recommendations %}
+        <div class="recommendation">{{ rec }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="card">
+        <h2>⚙️ Configuration</h2>
+        <p><strong>Window Strategy:</strong> {{ result.window_strategy }}</p>
+        <p><strong>Window Size:</strong> {{ result.window_size }}</p>
+        <p><strong>Granularity:</strong> {{ result.granularity }}</p>
+    </div>
+
+    <footer style="text-align: center; color: var(--muted); margin-top: 2rem;">
+        <p>Generated by MemGraph v{{ result.memgraph_version }}</p>
+    </footer>
+</body>
+</html>

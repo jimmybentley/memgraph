@@ -17,7 +17,7 @@ A developer tool that analyzes memory access patterns using graphlet (small subg
 Clone the repository and install in development mode:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/jimmybentley/memgraph
 cd memgraph
 pip install -e ".[dev]"
 ```

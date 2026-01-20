@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 import typer  # type: ignore
 from rich.console import Console  # type: ignore
 from rich.table import Table  # type: ignore
@@ -20,6 +21,11 @@ from memgraph.graphlets.sampling import GraphletSampler
 from memgraph.graphlets.signatures import GraphletSignature
 from memgraph.classifier.patterns import PatternDatabase
 from memgraph.classifier.distance import PatternClassifier
+from memgraph.report.result import AnalysisResult
+from memgraph.report.cli_report import CLIReporter
+from memgraph.report.json_report import JSONReporter
+from memgraph.report.html_report import HTMLReporter
+from memgraph import __version__
 
 app = typer.Typer(
     name="memgraph",
@@ -708,9 +714,33 @@ def analyze(
         "-f",
         help="Trace format (auto-detect if not specified)"
     ),
+    report: str = typer.Option(
+        "cli",
+        "--report",
+        "-r",
+        help="Report format: cli, json, html"
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output file for json/html reports"
+    ),
 ) -> None:
     """End-to-end analysis: parse trace, build graph, and classify pattern."""
     try:
+        # Validate report format
+        report = report.lower()
+        if report not in ("cli", "json", "html"):
+            console.print(f"[red]Error:[/red] Unknown report format: {report}")
+            console.print("Available: cli, json, html")
+            raise typer.Exit(1)
+
+        # Validate output requirement
+        if report in ("json", "html") and output is None:
+            console.print(f"[red]Error:[/red] --output is required for {report} format")
+            raise typer.Exit(1)
+
         # Validate metric
         metric = metric.lower()
         if metric not in ("cosine", "euclidean", "manhattan"):
@@ -757,6 +787,9 @@ def analyze(
         graph = builder.build(trace)
         console.print(f"  → Graph: {graph.number_of_nodes():,} nodes, {graph.number_of_edges():,} edges")
 
+        # Compute graph stats
+        graph_stats = GraphStats.from_graph(graph)
+
         # Enumerate graphlets
         console.print(f"[cyan]Step 3/4: Computing graphlet signature[/cyan]")
         if sample:
@@ -773,16 +806,111 @@ def analyze(
         # Classify pattern
         console.print(f"[cyan]Step 4/4: Classifying pattern[/cyan]")
         classifier = PatternClassifier(metric=metric)  # type: ignore
-        result = classifier.classify(signature)
+        classification = classifier.classify(signature)
 
-        # Display classification report
+        # Build AnalysisResult
+        analysis_result = AnalysisResult(
+            trace_source=str(trace_file),
+            analysis_timestamp=datetime.now(),
+            memgraph_version=__version__,
+            total_accesses=trace.metadata.total_accesses,
+            unique_addresses=trace.metadata.unique_addresses,
+            read_count=trace.metadata.read_count,
+            write_count=trace.metadata.write_count,
+            node_count=graph.number_of_nodes(),
+            edge_count=graph.number_of_edges(),
+            density=graph_stats.density,
+            avg_degree=graph_stats.avg_degree,
+            avg_clustering=graph_stats.avg_clustering,
+            graphlet_counts=counts.to_dict(),
+            graphlet_frequencies=signature.to_dict(),
+            detected_pattern=classification.pattern_name,
+            confidence=classification.confidence,
+            all_similarities=classification.all_similarities,
+            recommendations=classification.recommendations,
+            window_strategy=window,
+            window_size=window_size,
+            granularity=granularity,
+        )
+
+        # Generate report
         console.print("")
-        console.print(result.format_report())
+        if report == "cli":
+            reporter = CLIReporter(console)
+            reporter.report(analysis_result)
+        elif report == "json":
+            reporter = JSONReporter()
+            reporter.report(analysis_result, output)
+            console.print(f"[green]✓[/green] JSON report saved to: {output}")
+        elif report == "html":
+            console.print("[cyan]Generating HTML report...[/cyan]")
+            reporter = HTMLReporter()
+            reporter.report(analysis_result, output)  # type: ignore
+            console.print(f"[green]✓[/green] HTML report saved to: {output}")
 
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
     except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def report(
+    result_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="Path to JSON analysis result file"
+    ),
+    format: str = typer.Option(
+        "cli",
+        "--format",
+        "-f",
+        help="Report format: cli, html"
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output file for html report"
+    ),
+) -> None:
+    """Generate a report from a saved JSON analysis result."""
+    try:
+        # Validate format
+        format = format.lower()
+        if format not in ("cli", "html"):
+            console.print(f"[red]Error:[/red] Unknown format: {format}")
+            console.print("Available: cli, html")
+            raise typer.Exit(1)
+
+        # Validate output requirement
+        if format == "html" and output is None:
+            console.print(f"[red]Error:[/red] --output is required for html format")
+            raise typer.Exit(1)
+
+        # Load result
+        console.print(f"[cyan]Loading analysis result:[/cyan] {result_file}")
+        result_json = result_file.read_text()
+        analysis_result = AnalysisResult.from_json(result_json)
+
+        # Generate report
+        if format == "cli":
+            reporter = CLIReporter(console)
+            reporter.report(analysis_result)
+        elif format == "html":
+            console.print("[cyan]Generating HTML report...[/cyan]")
+            reporter = HTMLReporter()
+            reporter.report(analysis_result, output)  # type: ignore
+            console.print(f"[green]✓[/green] HTML report saved to: {output}")
+
+    except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
     except Exception as e:
