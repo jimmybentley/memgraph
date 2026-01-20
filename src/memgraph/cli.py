@@ -18,6 +18,8 @@ from memgraph.graph.serialization import save_graph, load_graph
 from memgraph.graphlets.enumeration import GraphletEnumerator
 from memgraph.graphlets.sampling import GraphletSampler
 from memgraph.graphlets.signatures import GraphletSignature
+from memgraph.classifier.patterns import PatternDatabase
+from memgraph.classifier.distance import PatternClassifier
 
 app = typer.Typer(
     name="memgraph",
@@ -567,6 +569,220 @@ def compare(
         console.print(panel)
 
     except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def classify(
+    graph_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="Path to graph file"
+    ),
+    sample: bool = typer.Option(
+        False,
+        "--sample",
+        help="Use sampling for large graphs"
+    ),
+    num_samples: int = typer.Option(
+        100000,
+        "--num-samples",
+        help="Number of samples (if using sampling)"
+    ),
+    metric: str = typer.Option(
+        "cosine",
+        "--metric",
+        "-m",
+        help="Distance metric: cosine, euclidean, manhattan"
+    ),
+    min_similarity: float = typer.Option(
+        0.0,
+        "--min-similarity",
+        help="Minimum similarity threshold (0.0-1.0)"
+    ),
+) -> None:
+    """Classify a graph's memory access pattern."""
+    try:
+        # Validate metric
+        metric = metric.lower()
+        if metric not in ("cosine", "euclidean", "manhattan"):
+            console.print(f"[red]Error:[/red] Unknown metric: {metric}")
+            console.print("Available: cosine, euclidean, manhattan")
+            raise typer.Exit(1)
+
+        # Load graph
+        console.print(f"[cyan]Loading graph:[/cyan] {graph_file}")
+        graph = load_graph(graph_file)
+
+        # Enumerate graphlets
+        if sample:
+            console.print(f"[cyan]Sampling graphlets:[/cyan] {num_samples:,} samples")
+            sampler = GraphletSampler(graph)
+            counts = sampler.sample_count(num_samples=num_samples)
+        else:
+            console.print("[cyan]Enumerating graphlets:[/cyan] exact")
+            enumerator = GraphletEnumerator(graph)
+            counts = enumerator.count_all()
+
+        # Create signature
+        signature = GraphletSignature.from_counts(counts)
+
+        # Classify pattern
+        console.print(f"[cyan]Classifying pattern:[/cyan] {metric} metric")
+        classifier = PatternClassifier(metric=metric)  # type: ignore
+
+        if min_similarity > 0:
+            result = classifier.classify_with_threshold(signature, min_similarity)
+            if result is None:
+                console.print(
+                    f"[yellow]Warning:[/yellow] No pattern matched with "
+                    f"similarity >= {min_similarity:.2f}"
+                )
+                raise typer.Exit(0)
+        else:
+            result = classifier.classify(signature)
+
+        # Display classification report
+        console.print("")
+        console.print(result.format_report())
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def analyze(
+    trace_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="Path to trace file"
+    ),
+    window: str = typer.Option(
+        "fixed",
+        "--window",
+        "-w",
+        help="Window strategy: fixed, sliding, adaptive"
+    ),
+    window_size: int = typer.Option(
+        100,
+        "--window-size",
+        help="Window size (number of accesses)"
+    ),
+    granularity: str = typer.Option(
+        "cacheline",
+        "--granularity",
+        "-g",
+        help="Address granularity: byte, cacheline, page"
+    ),
+    sample: bool = typer.Option(
+        False,
+        "--sample",
+        help="Use sampling for graphlet enumeration"
+    ),
+    num_samples: int = typer.Option(
+        100000,
+        "--num-samples",
+        help="Number of samples (if using sampling)"
+    ),
+    metric: str = typer.Option(
+        "cosine",
+        "--metric",
+        "-m",
+        help="Distance metric: cosine, euclidean, manhattan"
+    ),
+    trace_format: Optional[str] = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help="Trace format (auto-detect if not specified)"
+    ),
+) -> None:
+    """End-to-end analysis: parse trace, build graph, and classify pattern."""
+    try:
+        # Validate metric
+        metric = metric.lower()
+        if metric not in ("cosine", "euclidean", "manhattan"):
+            console.print(f"[red]Error:[/red] Unknown metric: {metric}")
+            console.print("Available: cosine, euclidean, manhattan")
+            raise typer.Exit(1)
+
+        # Parse trace
+        console.print(f"[cyan]Step 1/4: Parsing trace[/cyan] {trace_file}")
+        trace = parse_trace(trace_file, format=trace_format)
+        console.print(f"  → Loaded {len(trace):,} memory accesses")
+
+        # Select window strategy
+        window = window.lower()
+        strategy: WindowStrategy
+        if window == "fixed":
+            strategy = FixedWindow(size=window_size)
+        elif window == "sliding":
+            strategy = SlidingWindow(size=window_size, step=1)
+        elif window == "adaptive":
+            strategy = AdaptiveWindow(base_size=window_size)
+        else:
+            console.print(f"[red]Error:[/red] Unknown window strategy: {window}")
+            console.print("Available: fixed, sliding, adaptive")
+            raise typer.Exit(1)
+
+        # Select granularity
+        granularity_map = {
+            "byte": Granularity.BYTE,
+            "cacheline": Granularity.CACHELINE,
+            "page": Granularity.PAGE,
+        }
+        granularity = granularity.lower()
+        if granularity not in granularity_map:
+            console.print(f"[red]Error:[/red] Unknown granularity: {granularity}")
+            console.print("Available: byte, cacheline, page")
+            raise typer.Exit(1)
+
+        gran = granularity_map[granularity]
+
+        # Build graph
+        console.print(f"[cyan]Step 2/4: Building graph[/cyan] ({window} window, {granularity})")
+        builder = GraphBuilder(window_strategy=strategy, granularity=gran)
+        graph = builder.build(trace)
+        console.print(f"  → Graph: {graph.number_of_nodes():,} nodes, {graph.number_of_edges():,} edges")
+
+        # Enumerate graphlets
+        console.print(f"[cyan]Step 3/4: Computing graphlet signature[/cyan]")
+        if sample:
+            sampler = GraphletSampler(graph)
+            counts = sampler.sample_count(num_samples=num_samples)
+            console.print(f"  → Sampled {num_samples:,} graphlets")
+        else:
+            enumerator = GraphletEnumerator(graph)
+            counts = enumerator.count_all()
+            console.print(f"  → Enumerated {counts.total:,} graphlets")
+
+        signature = GraphletSignature.from_counts(counts)
+
+        # Classify pattern
+        console.print(f"[cyan]Step 4/4: Classifying pattern[/cyan]")
+        classifier = PatternClassifier(metric=metric)  # type: ignore
+        result = classifier.classify(signature)
+
+        # Display classification report
+        console.print("")
+        console.print(result.format_report())
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except ValueError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
     except Exception as e:
