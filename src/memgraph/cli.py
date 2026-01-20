@@ -15,6 +15,9 @@ from memgraph.graph.windowing import WindowStrategy, FixedWindow, SlidingWindow,
 from memgraph.graph.coarsening import Granularity
 from memgraph.graph.stats import GraphStats
 from memgraph.graph.serialization import save_graph, load_graph
+from memgraph.graphlets.enumeration import GraphletEnumerator
+from memgraph.graphlets.sampling import GraphletSampler
+from memgraph.graphlets.signatures import GraphletSignature
 
 app = typer.Typer(
     name="memgraph",
@@ -378,6 +381,189 @@ def stats(
             padding=(1, 2),
         )
 
+        console.print(panel)
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def graphlets(
+    graph_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="Path to graph file"
+    ),
+    sample: bool = typer.Option(
+        False,
+        "--sample",
+        help="Use sampling for large graphs"
+    ),
+    num_samples: int = typer.Option(
+        100000,
+        "--num-samples",
+        help="Number of samples (if using sampling)"
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Save signature to JSON file"
+    ),
+) -> None:
+    """Enumerate graphlets and compute signature for a graph."""
+    try:
+        # Load graph
+        console.print(f"[cyan]Loading graph:[/cyan] {graph_file}")
+        graph = load_graph(graph_file)
+
+        # Enumerate graphlets
+        if sample:
+            console.print(f"[cyan]Sampling graphlets:[/cyan] {num_samples:,} samples")
+            sampler = GraphletSampler(graph)
+            counts = sampler.sample_count(num_samples=num_samples)
+            method = f"sampling ({num_samples:,} samples)"
+        else:
+            console.print("[cyan]Enumerating graphlets:[/cyan] exact")
+            enumerator = GraphletEnumerator(graph)
+            counts = enumerator.count_all()
+            method = "exact enumeration"
+
+        # Create signature
+        signature = GraphletSignature.from_counts(counts)
+
+        # Display results
+        lines = [
+            f"Method: {method}",
+            "",
+            counts.format_summary(),
+        ]
+
+        panel = Panel(
+            "\n".join(lines),
+            title="[bold]Graphlet Analysis[/bold]",
+            border_style="green",
+            padding=(1, 2),
+        )
+        console.print(panel)
+
+        # Save signature if requested
+        if output:
+            import json
+            with open(output, "w") as f:
+                json.dump(signature.to_dict(), f, indent=2)
+            console.print(f"[green]✓[/green] Signature saved to: {output}")
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def compare(
+    graph1_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="Path to first graph file"
+    ),
+    graph2_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="Path to second graph file"
+    ),
+    metric: str = typer.Option(
+        "cosine",
+        "--metric",
+        "-m",
+        help="Distance metric: cosine, euclidean, manhattan"
+    ),
+    sample: bool = typer.Option(
+        False,
+        "--sample",
+        help="Use sampling for large graphs"
+    ),
+    num_samples: int = typer.Option(
+        100000,
+        "--num-samples",
+        help="Number of samples (if using sampling)"
+    ),
+) -> None:
+    """Compare two graphs based on their graphlet signatures."""
+    try:
+        # Validate metric
+        metric = metric.lower()
+        if metric not in ("cosine", "euclidean", "manhattan"):
+            console.print(f"[red]Error:[/red] Unknown metric: {metric}")
+            console.print("Available: cosine, euclidean, manhattan")
+            raise typer.Exit(1)
+
+        # Load graphs
+        console.print(f"[cyan]Loading graphs...[/cyan]")
+        graph1 = load_graph(graph1_file)
+        graph2 = load_graph(graph2_file)
+
+        # Enumerate graphlets for both graphs
+        if sample:
+            console.print(f"[cyan]Sampling graphlets:[/cyan] {num_samples:,} samples each")
+            sampler1 = GraphletSampler(graph1)
+            sampler2 = GraphletSampler(graph2)
+            counts1 = sampler1.sample_count(num_samples=num_samples)
+            counts2 = sampler2.sample_count(num_samples=num_samples)
+        else:
+            console.print("[cyan]Enumerating graphlets...[/cyan]")
+            counts1 = GraphletEnumerator(graph1).count_all()
+            counts2 = GraphletEnumerator(graph2).count_all()
+
+        # Create signatures
+        sig1 = GraphletSignature.from_counts(counts1)
+        sig2 = GraphletSignature.from_counts(counts2)
+
+        # Compute distance and similarity
+        distance = sig1.distance(sig2, metric=metric)  # type: ignore
+        similarity = sig1.similarity(sig2, metric=metric)  # type: ignore
+
+        # Display results
+        lines = [
+            f"Graph 1: {graph1.number_of_nodes():,} nodes, {graph1.number_of_edges():,} edges",
+            f"Graph 2: {graph2.number_of_nodes():,} nodes, {graph2.number_of_edges():,} edges",
+            "",
+            f"Metric: {metric}",
+            f"Distance: {distance:.4f}",
+            f"Similarity: {similarity:.4f}",
+            "",
+        ]
+
+        # Add interpretation
+        if metric == "cosine":
+            if similarity > 0.9:
+                interpretation = "Very similar"
+            elif similarity > 0.7:
+                interpretation = "Moderately similar"
+            elif similarity > 0.5:
+                interpretation = "Somewhat similar"
+            else:
+                interpretation = "Quite different"
+            lines.append(f"Interpretation: {interpretation}")
+
+        panel = Panel(
+            "\n".join(lines),
+            title="[bold]Graph Comparison[/bold]",
+            border_style="green",
+            padding=(1, 2),
+        )
         console.print(panel)
 
     except FileNotFoundError as e:
