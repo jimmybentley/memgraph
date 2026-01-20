@@ -84,6 +84,14 @@ class GraphletCount:
         normalized = self.normalized
         return [normalized[g] for g in GraphletType]
 
+    def to_dict(self) -> dict[str, int]:
+        """Return graphlet counts as a dictionary with string keys.
+
+        Returns:
+            Dictionary mapping graphlet names to counts
+        """
+        return {g.name: self.counts[g] for g in GraphletType}
+
     def format_summary(self) -> str:
         """Format graphlet counts as a human-readable summary.
 
