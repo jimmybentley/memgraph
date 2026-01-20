@@ -25,6 +25,7 @@ from memgraph.report.result import AnalysisResult
 from memgraph.report.cli_report import CLIReporter
 from memgraph.report.json_report import JSONReporter
 from memgraph.report.html_report import HTMLReporter
+from memgraph.tracer import ValgrindTracer, TracerConfig, ValgrindNotFoundError, TracingError
 from memgraph import __version__
 
 app = typer.Typer(
@@ -847,6 +848,259 @@ def analyze(
             reporter = HTMLReporter()
             reporter.report(analysis_result, output)  # type: ignore
             console.print(f"[green]✓[/green] HTML report saved to: {output}")
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def run(
+    binary: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="Binary to trace and analyze"
+    ),
+    args: Optional[list[str]] = typer.Argument(
+        None,
+        help="Arguments to pass to the binary"
+    ),
+    window: str = typer.Option(
+        "fixed",
+        "--window",
+        "-w",
+        help="Window strategy: fixed, sliding, adaptive"
+    ),
+    window_size: int = typer.Option(
+        100,
+        "--window-size",
+        help="Window size (number of accesses)"
+    ),
+    granularity: str = typer.Option(
+        "cacheline",
+        "--granularity",
+        "-g",
+        help="Address granularity: byte, cacheline, page"
+    ),
+    sample: bool = typer.Option(
+        False,
+        "--sample",
+        help="Use sampling for graphlet enumeration"
+    ),
+    num_samples: int = typer.Option(
+        100000,
+        "--num-samples",
+        help="Number of samples (if using sampling)"
+    ),
+    metric: str = typer.Option(
+        "cosine",
+        "--metric",
+        "-m",
+        help="Distance metric: cosine, euclidean, manhattan"
+    ),
+    report: str = typer.Option(
+        "cli",
+        "--report",
+        "-r",
+        help="Report format: cli, json, html"
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output file for json/html reports"
+    ),
+    keep_trace: bool = typer.Option(
+        False,
+        "--keep-trace",
+        help="Keep trace file after analysis"
+    ),
+    trace_output: Optional[Path] = typer.Option(
+        None,
+        "--trace-output",
+        help="Save trace to specific file"
+    ),
+    timeout: Optional[int] = typer.Option(
+        None,
+        "--timeout",
+        help="Timeout for tracing in seconds"
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Verbose output"
+    ),
+) -> None:
+    """Trace a binary with Valgrind and analyze its memory access patterns.
+
+    This command combines tracing and analysis in one step:
+    1. Runs the binary under Valgrind to capture memory accesses
+    2. Parses the trace
+    3. Builds a temporal adjacency graph
+    4. Analyzes graphlet patterns
+    5. Classifies the access pattern
+    6. Generates a report
+
+    Examples:
+        memgraph run ./my_program
+        memgraph run ./benchmark arg1 arg2
+        memgraph run ./app --report=html -o report.html
+        memgraph run ./test --keep-trace --trace-output=trace.log
+    """
+    try:
+        # Validate report format
+        report = report.lower()
+        if report not in ("cli", "json", "html"):
+            console.print(f"[red]Error:[/red] Unknown report format: {report}")
+            console.print("Available: cli, json, html")
+            raise typer.Exit(1)
+
+        # Validate output requirement
+        if report in ("json", "html") and output is None:
+            console.print(f"[red]Error:[/red] --output is required for {report} format")
+            raise typer.Exit(1)
+
+        # Validate metric
+        metric = metric.lower()
+        if metric not in ("cosine", "euclidean", "manhattan"):
+            console.print(f"[red]Error:[/red] Unknown metric: {metric}")
+            console.print("Available: cosine, euclidean, manhattan")
+            raise typer.Exit(1)
+
+        # Step 1: Trace the binary
+        console.print(f"[cyan]Step 1/5: Tracing binary with Valgrind[/cyan]")
+        config = TracerConfig(
+            keep_trace=keep_trace,
+            trace_output=trace_output,
+            timeout=timeout,
+            verbose=verbose
+        )
+
+        try:
+            tracer = ValgrindTracer(config)
+        except ValgrindNotFoundError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+
+        try:
+            trace_path = tracer.trace_to_file(binary, args or [], output=trace_output)
+            console.print(f"  → Trace saved to: {trace_path}")
+        except TracingError as e:
+            console.print(f"[red]Tracing failed:[/red] {e}")
+            raise typer.Exit(1)
+
+        # Step 2: Parse trace
+        console.print(f"[cyan]Step 2/5: Parsing trace[/cyan]")
+        trace = parse_trace(trace_path, format="lackey")
+        console.print(f"  → Loaded {len(trace):,} memory accesses")
+
+        # Select window strategy
+        window = window.lower()
+        strategy: WindowStrategy
+        if window == "fixed":
+            strategy = FixedWindow(size=window_size)
+        elif window == "sliding":
+            strategy = SlidingWindow(size=window_size, step=1)
+        elif window == "adaptive":
+            strategy = AdaptiveWindow(base_size=window_size)
+        else:
+            console.print(f"[red]Error:[/red] Unknown window strategy: {window}")
+            console.print("Available: fixed, sliding, adaptive")
+            raise typer.Exit(1)
+
+        # Select granularity
+        granularity_map = {
+            "byte": Granularity.BYTE,
+            "cacheline": Granularity.CACHELINE,
+            "page": Granularity.PAGE,
+        }
+        granularity = granularity.lower()
+        if granularity not in granularity_map:
+            console.print(f"[red]Error:[/red] Unknown granularity: {granularity}")
+            console.print("Available: byte, cacheline, page")
+            raise typer.Exit(1)
+
+        gran = granularity_map[granularity]
+
+        # Step 3: Build graph
+        console.print(f"[cyan]Step 3/5: Building graph[/cyan] ({window} window, {granularity})")
+        builder = GraphBuilder(window_strategy=strategy, granularity=gran)
+        graph = builder.build(trace)
+        console.print(f"  → Graph: {graph.number_of_nodes():,} nodes, {graph.number_of_edges():,} edges")
+
+        # Compute graph stats
+        graph_stats = GraphStats.from_graph(graph)
+
+        # Step 4: Enumerate graphlets
+        console.print(f"[cyan]Step 4/5: Computing graphlet signature[/cyan]")
+        if sample or graph.number_of_nodes() > 5000:
+            sampler = GraphletSampler(graph)
+            counts = sampler.sample_count(num_samples=num_samples)
+            console.print(f"  → Sampled {num_samples:,} graphlets")
+        else:
+            enumerator = GraphletEnumerator(graph)
+            counts = enumerator.count_all()
+            console.print(f"  → Enumerated {counts.total:,} graphlets")
+
+        signature = GraphletSignature.from_counts(counts)
+
+        # Step 5: Classify pattern
+        console.print(f"[cyan]Step 5/5: Classifying pattern[/cyan]")
+        classifier = PatternClassifier(metric=metric)  # type: ignore
+        classification = classifier.classify(signature)
+
+        # Build AnalysisResult
+        analysis_result = AnalysisResult(
+            trace_source=str(binary),
+            analysis_timestamp=datetime.now(),
+            memgraph_version=__version__,
+            total_accesses=trace.metadata.total_accesses,
+            unique_addresses=trace.metadata.unique_addresses,
+            read_count=trace.metadata.read_count,
+            write_count=trace.metadata.write_count,
+            node_count=graph.number_of_nodes(),
+            edge_count=graph.number_of_edges(),
+            density=graph_stats.density,
+            avg_degree=graph_stats.avg_degree,
+            avg_clustering=graph_stats.avg_clustering,
+            graphlet_counts=counts.to_dict(),
+            graphlet_frequencies=signature.to_dict(),
+            detected_pattern=classification.pattern_name,
+            confidence=classification.confidence,
+            all_similarities=classification.all_similarities,
+            recommendations=classification.recommendations,
+            window_strategy=window,
+            window_size=window_size,
+            granularity=granularity,
+        )
+
+        # Generate report
+        console.print("")
+        if report == "cli":
+            reporter = CLIReporter(console)
+            reporter.report(analysis_result)
+        elif report == "json":
+            reporter = JSONReporter()
+            reporter.report(analysis_result, output)
+            console.print(f"[green]✓[/green] JSON report saved to: {output}")
+        elif report == "html":
+            console.print("[cyan]Generating HTML report...[/cyan]")
+            reporter = HTMLReporter()
+            reporter.report(analysis_result, output)  # type: ignore
+            console.print(f"[green]✓[/green] HTML report saved to: {output}")
+
+        # Cleanup trace file if not keeping
+        if not keep_trace and trace_output is None:
+            trace_path.unlink(missing_ok=True)
 
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
