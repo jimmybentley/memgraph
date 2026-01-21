@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=68.0,<77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -25,7 +25,6 @@ keywords = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -35,13 +34,6 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Typing :: Typed",
 ]
-
-[project.urls]
-Homepage = "https://github.com/jimmybentley/memgraph"
-Documentation = "https://github.com/jimmybentley/memgraph#readme"
-Repository = "https://github.com/jimmybentley/memgraph"
-Issues = "https://github.com/jimmybentley/memgraph/issues"
-Changelog = "https://github.com/jimmybentley/memgraph/releases"
 dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
@@ -51,11 +43,19 @@ dependencies = [
     "matplotlib>=3.7",
 ]
 
+[project.urls]
+Homepage = "https://github.com/jimmybentley/memgraph"
+Documentation = "https://github.com/jimmybentley/memgraph#readme"
+Repository = "https://github.com/jimmybentley/memgraph"
+Issues = "https://github.com/jimmybentley/memgraph/issues"
+Changelog = "https://github.com/jimmybentley/memgraph/releases"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
     "mypy>=1.5.0",
+    "types-networkx",
 ]
 viz = [
     "matplotlib>=3.7",
@@ -92,6 +92,15 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = true
 no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = [
+    "matplotlib.*",
+    "numpy.*",
+    "jinja2.*",
+    "rich.*",
+]
+ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["src"]

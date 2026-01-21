@@ -75,12 +75,12 @@ def parse_trace(
         return parser.parse(file_path)
 
     # Auto-detect format
-    parser_cls = detect_format(file_path)
-    if parser_cls is None:
+    detected_parser = detect_format(file_path)
+    if detected_parser is None:
         raise ValueError(
             f"Could not detect format of trace file: {file_path}. "
             f"Try specifying format explicitly."
         )
 
-    parser = parser_cls()
+    parser = detected_parser()
     return parser.parse(file_path)

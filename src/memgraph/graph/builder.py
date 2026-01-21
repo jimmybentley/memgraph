@@ -104,7 +104,7 @@ class GraphBuilder:
         Returns:
             NetworkX undirected graph
         """
-        graph = nx.Graph()
+        graph: nx.Graph = nx.Graph()
 
         # Add edges with weights >= min_edge_weight
         for (node1, node2), weight in edge_weights.items():

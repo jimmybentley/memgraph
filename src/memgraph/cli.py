@@ -837,16 +837,13 @@ def analyze(
         # Generate report
         console.print("")
         if report == "cli":
-            reporter = CLIReporter(console)
-            reporter.report(analysis_result)
+            CLIReporter(console).report(analysis_result)
         elif report == "json":
-            reporter = JSONReporter()
-            reporter.report(analysis_result, output)
+            JSONReporter().report(analysis_result, output)
             console.print(f"[green]✓[/green] JSON report saved to: {output}")
         elif report == "html":
             console.print("[cyan]Generating HTML report...[/cyan]")
-            reporter = HTMLReporter()
-            reporter.report(analysis_result, output)  # type: ignore
+            HTMLReporter().report(analysis_result, output)  # type: ignore
             console.print(f"[green]✓[/green] HTML report saved to: {output}")
 
     except FileNotFoundError as e:
@@ -1086,16 +1083,13 @@ def run(
         # Generate report
         console.print("")
         if report == "cli":
-            reporter = CLIReporter(console)
-            reporter.report(analysis_result)
+            CLIReporter(console).report(analysis_result)
         elif report == "json":
-            reporter = JSONReporter()
-            reporter.report(analysis_result, output)
+            JSONReporter().report(analysis_result, output)
             console.print(f"[green]✓[/green] JSON report saved to: {output}")
         elif report == "html":
             console.print("[cyan]Generating HTML report...[/cyan]")
-            reporter = HTMLReporter()
-            reporter.report(analysis_result, output)  # type: ignore
+            HTMLReporter().report(analysis_result, output)  # type: ignore
             console.print(f"[green]✓[/green] HTML report saved to: {output}")
 
         # Cleanup trace file if not keeping
@@ -1156,12 +1150,10 @@ def report(
 
         # Generate report
         if format == "cli":
-            reporter = CLIReporter(console)
-            reporter.report(analysis_result)
+            CLIReporter(console).report(analysis_result)
         elif format == "html":
             console.print("[cyan]Generating HTML report...[/cyan]")
-            reporter = HTMLReporter()
-            reporter.report(analysis_result, output)  # type: ignore
+            HTMLReporter().report(analysis_result, output)  # type: ignore
             console.print(f"[green]✓[/green] HTML report saved to: {output}")
 
     except FileNotFoundError as e:
