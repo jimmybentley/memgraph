@@ -1,0 +1,70 @@
+Step 1/5: Tracing binary with Valgrind
+  → Trace saved to: /tmp/memgraph_ejbf0ghm.trace
+Step 2/5: Parsing trace
+  → Loaded 197,952 memory accesses
+Step 3/5: Building graph (fixed window, cacheline)
+  → Graph: 1,461 nodes, 31,837 edges
+Step 4/5: Computing graphlet signature
+  → Sampled 50,000 graphlets
+Step 5/5: Classifying pattern
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ MemGraph Analysis Report                                                     ║
+║ Source: examples/random_access                                               ║
+║ Generated: 2026-01-20 17:36:54                                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+           Trace Statistics           
+                                      
+  Metric                       Value  
+ ──────────────────────────────────── 
+  Total Accesses             197,952  
+  Unique Addresses            10,199  
+  Reads              142,508 (72.0%)  
+  Writes              55,444 (28.0%)  
+                                      
+     Graph Statistics      
+                           
+  Metric            Value  
+ ───────────────────────── 
+  Nodes             1,461  
+  Edges            31,837  
+  Density          0.0299  
+  Avg Degree        43.58  
+  Avg Clustering   0.8081  
+                           
+                           Graphlet Distribution                            
+                                                                            
+  Graphlet              Count   Frequency                                   
+ ────────────────────────────────────────────────────────────────────────── 
+  G0_EDGE                   0       0.000                                   
+  G1_PATH                   0       0.000                                   
+  G2_TRIANGLE               0       0.000                                   
+  G3_4PATH              7,491       0.150   █████████                       
+  G4_STAR              18,742       0.375   █████████████████████████       
+  G5_CYCLE                202       0.004                                   
+  G6_TAILED_TRIANGLE   13,306       0.266   █████████████████               
+  G7_DIAMOND            4,028       0.081   █████                           
+  G8_CLIQUE             6,231       0.125   ████████                        
+                                                                            
+╭─────────────────────────── Pattern Classification ───────────────────────────╮
+│ POINTER_CHASE                                                                │
+│ Confidence: 42.2%                                                            │
+│                                                                              │
+│ Pattern Similarities:                                                        │
+│   POINTER_CHASE      52.2% ██████████░░░░░░░░░░ ◄                            │
+│   WORKING_SET        45.8% █████████░░░░░░░░░░░                              │
+│   PRODUCER_CONSUMER  33.4% ██████░░░░░░░░░░░░░░                              │
+│   STRIDED            15.2% ███░░░░░░░░░░░░░░░░░                              │
+│   SEQUENTIAL         14.2% ██░░░░░░░░░░░░░░░░░░                              │
+│   RANDOM             7.1% █░░░░░░░░░░░░░░░░░░░                               │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭────────────────────────────── Recommendations ───────────────────────────────╮
+│   • ⚠ Hardware prefetching ineffective                                       │
+│   • → Linearize: convert to array-based representation                       │
+│   • → Consider B-tree instead of binary tree                                 │
+│   • → Use software prefetch if next pointer is predictable                   │
+│   • → Cache-oblivious layout (van Emde Boas)                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

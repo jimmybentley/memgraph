@@ -1,0 +1,56 @@
+{
+  "trace_source": "examples/linked_list",
+  "analysis_timestamp": "2026-01-20T17:36:19.692817",
+  "memgraph_version": "0.1.0",
+  "total_accesses": 176901,
+  "unique_addresses": 12206,
+  "read_count": 123463,
+  "write_count": 53438,
+  "node_count": 1900,
+  "edge_count": 40742,
+  "density": 0.02258363127407777,
+  "avg_degree": 42.886315789473684,
+  "avg_clustering": 0.8355499831405766,
+  "graphlet_counts": {
+    "G0_EDGE": 0,
+    "G1_PATH": 0,
+    "G2_TRIANGLE": 0,
+    "G3_4PATH": 5660,
+    "G4_STAR": 26855,
+    "G5_CYCLE": 208,
+    "G6_TAILED_TRIANGLE": 10736,
+    "G7_DIAMOND": 3953,
+    "G8_CLIQUE": 2588
+  },
+  "graphlet_frequencies": {
+    "G0_EDGE": 0.0,
+    "G1_PATH": 0.0,
+    "G2_TRIANGLE": 0.0,
+    "G3_4PATH": 0.1132,
+    "G4_STAR": 0.5371,
+    "G5_CYCLE": 0.00416,
+    "G6_TAILED_TRIANGLE": 0.21472,
+    "G7_DIAMOND": 0.07906,
+    "G8_CLIQUE": 0.05176
+  },
+  "detected_pattern": "POINTER_CHASE",
+  "confidence": 0.9806899468229835,
+  "all_similarities": {
+    "SEQUENTIAL": 0.11564166698355072,
+    "RANDOM": 0.06353000487043259,
+    "STRIDED": 0.13695565779915841,
+    "POINTER_CHASE": 0.5409452098531007,
+    "WORKING_SET": 0.39384171782965316,
+    "PRODUCER_CONSUMER": 0.3100793918996996
+  },
+  "recommendations": [
+    "\u26a0 Hardware prefetching ineffective",
+    "\u2192 Linearize: convert to array-based representation",
+    "\u2192 Consider B-tree instead of binary tree",
+    "\u2192 Use software prefetch if next pointer is predictable",
+    "\u2192 Cache-oblivious layout (van Emde Boas)"
+  ],
+  "window_strategy": "fixed",
+  "window_size": 50,
+  "granularity": "cacheline"
+}
