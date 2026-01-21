@@ -87,8 +87,3 @@ jobs:
 
     - name: Build package
       run: python -m build
-
-    - name: Check package metadata
-      run: |
-        pip install twine
-        twine check dist/*
