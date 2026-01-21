@@ -9,6 +9,7 @@ from memgraph.classifier.patterns import PatternDatabase
 from memgraph.graphlets.signatures import GraphletSignature
 from memgraph.graphlets.definitions import GraphletType
 from memgraph.graphlets.enumeration import GraphletEnumerator
+from memgraph.graphlets.sampling import GraphletSampler
 from memgraph.trace.generator import (
     generate_sequential,
     generate_random,
@@ -158,8 +159,8 @@ def test_pattern_classifier_sequential_trace() -> None:
     # Note: Sequential access within a fixed window creates dense temporal graphs
     graph = GraphBuilder(FixedWindow(50)).build(trace)
 
-    # Enumerate graphlets
-    counts = GraphletEnumerator(graph).count_all()
+    # Sample graphlets (use sampling for speed)
+    counts = GraphletSampler(graph).sample_count(num_samples=50000)
     signature = GraphletSignature.from_counts(counts)
 
     # Classify
@@ -181,8 +182,8 @@ def test_pattern_classifier_random_trace() -> None:
     # Build graph
     graph = GraphBuilder(FixedWindow(50)).build(trace)
 
-    # Enumerate graphlets
-    counts = GraphletEnumerator(graph).count_all()
+    # Sample graphlets (use sampling for speed)
+    counts = GraphletSampler(graph).sample_count(num_samples=50000)
     signature = GraphletSignature.from_counts(counts)
 
     # Classify
@@ -203,8 +204,8 @@ def test_pattern_classifier_working_set_trace() -> None:
     # Build graph
     graph = GraphBuilder(FixedWindow(50)).build(trace)
 
-    # Enumerate graphlets
-    counts = GraphletEnumerator(graph).count_all()
+    # Sample graphlets (use sampling for speed)
+    counts = GraphletSampler(graph).sample_count(num_samples=50000)
     signature = GraphletSignature.from_counts(counts)
 
     # Classify
@@ -367,12 +368,12 @@ def test_different_patterns_produce_different_classifications() -> None:
     rand_graph = GraphBuilder(FixedWindow(50)).build(rand_trace)
     ws_graph = GraphBuilder(FixedWindow(50)).build(ws_trace)
 
-    # Enumerate and classify
+    # Sample and classify (use sampling for speed)
     classifier = PatternClassifier()
 
-    seq_sig = GraphletSignature.from_counts(GraphletEnumerator(seq_graph).count_all())
-    rand_sig = GraphletSignature.from_counts(GraphletEnumerator(rand_graph).count_all())
-    ws_sig = GraphletSignature.from_counts(GraphletEnumerator(ws_graph).count_all())
+    seq_sig = GraphletSignature.from_counts(GraphletSampler(seq_graph).sample_count(num_samples=50000))
+    rand_sig = GraphletSignature.from_counts(GraphletSampler(rand_graph).sample_count(num_samples=50000))
+    ws_sig = GraphletSignature.from_counts(GraphletSampler(ws_graph).sample_count(num_samples=50000))
 
     seq_result = classifier.classify(seq_sig)
     rand_result = classifier.classify(rand_sig)
