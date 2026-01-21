@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from datetime import datetime
+from typing import Union
 
 __version__ = "0.1.0"
 
@@ -95,6 +96,7 @@ def analyze(
 
     # Select window strategy
     window_strategy = window_strategy.lower()
+    strategy: Union[FixedWindow, SlidingWindow, AdaptiveWindow]
     if window_strategy == "fixed":
         strategy = FixedWindow(size=window_size)
     elif window_strategy == "sliding":

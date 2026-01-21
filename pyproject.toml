@@ -55,6 +55,7 @@ dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
     "mypy>=1.5.0",
+    "types-networkx",
 ]
 viz = [
     "matplotlib>=3.7",
@@ -91,6 +92,15 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = true
 no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = [
+    "matplotlib.*",
+    "numpy.*",
+    "jinja2.*",
+    "rich.*",
+]
+ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["src"]

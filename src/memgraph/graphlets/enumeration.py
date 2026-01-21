@@ -60,7 +60,7 @@ class GraphletEnumerator:
             Tuple of (triangle_count, path_count)
         """
         # Count triangles using NetworkX's efficient algorithm
-        triangle_dict = nx.triangles(self.graph)
+        triangle_dict: dict = nx.triangles(self.graph)  # type: ignore[assignment]
         triangles = sum(triangle_dict.values()) // 3
 
         # Count 2-paths: for each node, count pairs of neighbors that aren't connected

@@ -32,7 +32,7 @@ def save_graph(
         nx.write_graphml(graph, path)
 
     elif format == "edgelist":
-        nx.write_edgelist(graph, path, data=["weight"])
+        nx.write_edgelist(graph, path, data=["weight"])  # type: ignore[arg-type]
 
     else:
         raise ValueError(
@@ -74,10 +74,10 @@ def load_graph(path: Path, format: Optional[str] = None) -> nx.Graph:
             return graph
 
     elif format == "graphml":
-        return nx.read_graphml(path)
+        return nx.read_graphml(path)  # type: ignore[no-any-return]
 
     elif format == "edgelist":
-        return nx.read_edgelist(path, data=[("weight", int)])
+        return nx.read_edgelist(path, data=[("weight", int)])  # type: ignore[no-any-return,call-overload]
 
     else:
         raise ValueError(
