@@ -258,10 +258,10 @@ src/memgraph/
 If you use MemGraph in research:
 
 ```bibtex
-@software{memgraph2025,
+@software{memgraph2026,
   author = {Bentley, James},
   title = {MemGraph: Memory Access Pattern Analysis via Graphlets},
-  year = {2025},
+  year = {2026},
   url = {https://github.com/jimmybentley/memgraph}
 }
 ```
